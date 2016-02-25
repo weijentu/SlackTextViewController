@@ -26,6 +26,7 @@
 @property (nonatomic, strong) NSArray *commands;
 
 @property (nonatomic, strong) NSArray *searchResult;
+@property (nonatomic, strong) NSString *detectedCommand;
 
 @property (nonatomic, strong) UIWindow *pipWindow;
 
@@ -111,7 +112,7 @@
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.tableView registerClass:[MessageTableViewCell class] forCellReuseIdentifier:MessengerCellIdentifier];
     
-    [self.autoCompletionView registerClass:[MessageTableViewCell class] forCellReuseIdentifier:AutoCompletionCellIdentifier];
+    [self.autoCompletionView registerClass:[UITableViewCell class] forCellReuseIdentifier:AutoCompletionCellIdentifier];
     [self registerPrefixesForAutoCompletion:@[@"@", @"#", @":", @"+:", @"/"]];
     
     [self.textView registerMarkdownFormattingSymbol:@"*" withTitle:@"Bold"];
@@ -351,6 +352,39 @@
     self.pipWindow.frame = frame;
 }
 
+- (NSString *)detectCommandInText:(NSString *)text
+{
+    NSCharacterSet *whitespace = [NSCharacterSet whitespaceCharacterSet];
+    
+    if (text.length > 0 && [text hasPrefix:@"/"] && [text rangeOfCharacterFromSet:whitespace].location != NSNotFound) {
+        NSArray *components = [text componentsSeparatedByCharactersInSet:whitespace];
+        NSString *command = [[components firstObject] substringFromIndex:1];
+        
+        if ([self.commands containsObject:command]) {
+            return command;
+        }
+    }
+    
+    return nil;
+}
+
+- (void)setDetectedCommand:(NSString *)command
+{
+    if (command.length > 0) {
+        _detectedCommand = command;
+        _searchResult = @[command];
+        
+        self.textView.text = [NSString stringWithFormat:@"%@%@ ", self.foundPrefix, command];
+        
+        [self showAutoCompletionView:YES];
+    }
+    else {
+        _detectedCommand = nil;
+        
+        [self.autoCompletionView reloadData];
+    }
+}
+
 
 #pragma mark - Overriden Methods
 
@@ -491,16 +525,22 @@
 
 - (BOOL)shouldProcessTextForAutoCompletion:(NSString *)text
 {
-    if ([text hasPrefix:@"/"] && self.isAutoCompleting) {
-        if (self.foundPrefixRange.location != 0) {
+    if (!self.isAutoCompleting) {
+        return YES;
+    }
+    
+    if ([self.foundPrefix isEqualToString:@"/"]) {
+        NSString *command = [self detectCommandInText:text];
+        
+        if (command) {
+            if (!_detectedCommand) {
+                self.detectedCommand = command;
+            }
+            
             return NO;
         }
-        
-        NSArray *components = [text componentsSeparatedByString:@" "];
-        NSString *command = [[components firstObject] stringByReplacingOccurrencesOfString:@"/" withString:@""];
-        
-        if ([self.commands containsObject:command]) {
-            return NO;
+        else {
+            self.detectedCommand = nil;
         }
     }
     
@@ -549,6 +589,10 @@
 
 - (CGFloat)heightForAutoCompletionView
 {
+    if (self.detectedCommand) {
+        return kMessageTableViewCellMaximumHeight;
+    }
+    
     CGFloat cellHeight = [self.autoCompletionView.delegate tableView:self.autoCompletionView heightForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
     return cellHeight*self.searchResult.count;
 }
@@ -605,11 +649,11 @@
     return cell;
 }
 
-- (MessageTableViewCell *)autoCompletionCellForRowAtIndexPath:(NSIndexPath *)indexPath
+- (UITableViewCell *)autoCompletionCellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    MessageTableViewCell *cell = (MessageTableViewCell *)[self.autoCompletionView dequeueReusableCellWithIdentifier:AutoCompletionCellIdentifier];
-    cell.indexPath = indexPath;
-    
+    UITableViewCell *cell = [self.autoCompletionView dequeueReusableCellWithIdentifier:AutoCompletionCellIdentifier];
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+
     NSString *text = self.searchResult[indexPath.row];
     
     if ([self.foundPrefix isEqualToString:@"#"]) {
@@ -618,9 +662,20 @@
     else if (([self.foundPrefix isEqualToString:@":"] || [self.foundPrefix isEqualToString:@"+:"])) {
         text = [NSString stringWithFormat:@":%@:", text];
     }
+    else if ([self.foundPrefix isEqualToString:@"/"]) {
+        if (self.detectedCommand) {
+            text = [NSString stringWithFormat:@"%@%@ [someone or #channel] [text] [some description of time]", self.foundPrefix, self.detectedCommand];
+            cell.backgroundColor = [UIColor clearColor];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.textLabel.numberOfLines = 2;
+        }
+        else {
+            cell.backgroundColor = [UIColor whiteColor];
+            cell.textLabel.numberOfLines = 1;
+        }
+    }
     
-    cell.titleLabel.text = text;
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    cell.textLabel.text = text;
     
     return cell;
 }
@@ -660,6 +715,9 @@
         return height;
     }
     else {
+        if (self.detectedCommand) {
+            return kMessageTableViewCellMaximumHeight;
+        }
         return kMessageTableViewCellMinimumHeight;
     }
 }
@@ -672,12 +730,22 @@
     if ([tableView isEqual:self.autoCompletionView]) {
         
         NSMutableString *item = [self.searchResult[indexPath.row] mutableCopy];
+        NSString *prefix = self.foundPrefix;
         
-        if ([self.foundPrefix isEqualToString:@"@"] && self.foundPrefixRange.location == 0) {
+        if ([prefix isEqualToString:@"@"] && self.foundPrefixRange.location == 0) {
             [item appendString:@":"];
         }
-        else if (([self.foundPrefix isEqualToString:@":"] || [self.foundPrefix isEqualToString:@"+:"])) {
+        else if (([prefix isEqualToString:@":"] || [prefix isEqualToString:@"+:"])) {
             [item appendString:@":"];
+        }
+        else if ([prefix isEqualToString:@"/"]) {
+            if (self.detectedCommand) {
+                return;
+            }
+            else {
+                self.detectedCommand = item;
+                return;
+            }
         }
         
         [item appendString:@" "];
