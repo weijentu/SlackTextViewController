@@ -35,7 +35,7 @@
 
 @implementation MessageViewController
 
-- (id)init
+- (instancetype)init
 {
     self = [super initWithTableViewStyle:UITableViewStylePlain];
     if (self) {
@@ -44,7 +44,7 @@
     return self;
 }
 
-- (id)initWithCoder:(NSCoder *)aDecoder
+- (instancetype)initWithCoder:(NSCoder *)aDecoder
 {
     self = [super initWithCoder:aDecoder];
     if (self) {
@@ -239,29 +239,31 @@
 
 - (void)didLongPressCell:(UIGestureRecognizer *)gesture
 {
-    if (gesture.state == UIGestureRecognizerStateEnded) {
-#ifdef __IPHONE_8_0
-        if (SLK_IS_IOS8_AND_HIGHER && [UIAlertController class]) {
-            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-            alertController.modalPresentationStyle = UIModalPresentationPopover;
-            alertController.popoverPresentationController.sourceView = gesture.view.superview;
-            alertController.popoverPresentationController.sourceRect = gesture.view.frame;
-            
-            [alertController addAction:[UIAlertAction actionWithTitle:@"Edit Message" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-                [self editCellMessage:gesture];
-            }]];
-            
-            [alertController addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:NULL]];
-            
-            [self.navigationController presentViewController:alertController animated:YES completion:nil];
-        }
-        else {
-            [self editCellMessage:gesture];
-        }
-#else
-        [self editCellMessage:gesture];
-#endif
+    if (gesture.state != UIGestureRecognizerStateBegan) {
+        return;
     }
+
+#ifdef __IPHONE_8_0
+    if (SLK_IS_IOS8_AND_HIGHER && [UIAlertController class]) {
+        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+        alertController.modalPresentationStyle = UIModalPresentationPopover;
+        alertController.popoverPresentationController.sourceView = gesture.view.superview;
+        alertController.popoverPresentationController.sourceRect = gesture.view.frame;
+        
+        [alertController addAction:[UIAlertAction actionWithTitle:@"Edit Message" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [self editCellMessage:gesture];
+        }]];
+        
+        [alertController addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:NULL]];
+        
+        [self.navigationController presentViewController:alertController animated:YES completion:nil];
+    }
+    else {
+        [self editCellMessage:gesture];
+    }
+#else
+    [self editCellMessage:gesture];
+#endif
 }
 
 - (void)editCellMessage:(UIGestureRecognizer *)gesture
@@ -543,6 +545,49 @@
 }
 
 
+#pragma mark - SLKTextViewDelegate Methods
+
+- (BOOL)textView:(SLKTextView *)textView shouldOfferFormattingForSymbol:(NSString *)symbol
+{
+    if ([symbol isEqualToString:@">"]) {
+        
+        NSRange selection = textView.selectedRange;
+        
+        // The Quote formatting only applies new paragraphs
+        if (selection.location == 0 && selection.length > 0) {
+            return YES;
+        }
+        
+        // or older paragraphs too
+        NSString *prevString = [textView.text substringWithRange:NSMakeRange(selection.location-1, 1)];
+        
+        if ([[NSCharacterSet newlineCharacterSet] characterIsMember:[prevString characterAtIndex:0]]) {
+            return YES;
+        }
+        
+        return NO;
+    }
+    
+    return [super textView:textView shouldOfferFormattingForSymbol:symbol];
+}
+
+- (BOOL)textView:(SLKTextView *)textView shouldInsertSuffixForFormattingWithSymbol:(NSString *)symbol prefixRange:(NSRange)prefixRange
+{
+    if ([symbol isEqualToString:@">"]) {
+        return NO;
+    }
+    
+    return [super textView:textView shouldInsertSuffixForFormattingWithSymbol:symbol prefixRange:prefixRange];
+}
+
+#pragma mark - UITextViewDelegate Methods
+
+- (BOOL)textView:(SLKTextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
+{
+    return [super textView:textView shouldChangeTextInRange:range replacementText:text];
+}
+
+
 #pragma mark - UITableViewDataSource Methods
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
@@ -684,56 +729,6 @@
     [super scrollViewDidScroll:scrollView];
 }
 
-
-#pragma mark - UITextViewDelegate Methods
-
-- (BOOL)textViewShouldBeginEditing:(UITextView *)textView
-{
-    return YES;
-}
-
-- (BOOL)textViewShouldEndEditing:(UITextView *)textView
-{
-    return YES;
-}
-
-- (BOOL)textView:(SLKTextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text
-{
-    return [super textView:textView shouldChangeTextInRange:range replacementText:text];
-}
-
-- (BOOL)textView:(SLKTextView *)textView shouldOfferFormattingForSymbol:(NSString *)symbol
-{
-    if ([symbol isEqualToString:@">"]) {
-        
-        NSRange selection = textView.selectedRange;
-        
-        // The Quote formatting only applies new paragraphs
-        if (selection.location == 0 && selection.length > 0) {
-            return YES;
-        }
-        
-        // or older paragraphs too
-        NSString *prevString = [textView.text substringWithRange:NSMakeRange(selection.location-1, 1)];
-        
-        if ([[NSCharacterSet newlineCharacterSet] characterIsMember:[prevString characterAtIndex:0]]) {
-            return YES;
-        }
-        
-        return NO;
-    }
-    
-    return [super textView:textView shouldOfferFormattingForSymbol:symbol];
-}
-
-- (BOOL)textView:(SLKTextView *)textView shouldInsertSuffixForFormattingWithSymbol:(NSString *)symbol prefixRange:(NSRange)prefixRange
-{
-    if ([symbol isEqualToString:@">"]) {
-        return NO;
-    }
-    
-    return [super textView:textView shouldInsertSuffixForFormattingWithSymbol:symbol prefixRange:prefixRange];
-}
 
 
 #pragma mark - Lifeterm
